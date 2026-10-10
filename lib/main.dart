@@ -572,6 +572,78 @@ class _MainScreenState extends State<MainScreen> {
     }
   }
 
+  Future<void> _findTelegramChatId() async {
+    final token = _tgTokenCtrl.text.trim();
+    if (token.isEmpty) {
+      _log('Bot Token을 먼저 입력하세요.');
+      return;
+    }
+    _log('텔레그램 대화 목록 조회 중...');
+    try {
+      final uri = Uri.parse('https://api.telegram.org/bot$token/getUpdates');
+      final resp = await http.get(uri).timeout(const Duration(seconds: 15));
+      if (resp.statusCode != 200) {
+        _log('조회 실패 (${resp.statusCode}). 토큰을 확인하세요.');
+        return;
+      }
+      final data = jsonDecode(resp.body) as Map<String, dynamic>;
+      final result = (data['result'] ?? []) as List;
+      final chats = <int, String>{};
+      for (final u in result) {
+        if (u is! Map) continue;
+        for (final key in ['message', 'edited_message', 'channel_post', 'my_chat_member']) {
+          final m = u[key];
+          if (m is Map && m['chat'] is Map) {
+            final chat = m['chat'] as Map;
+            final id = (chat['id'] as num?)?.toInt();
+            if (id == null) continue;
+            final name = [chat['first_name'], chat['last_name']]
+                .whereType<String>()
+                .where((s) => s.isNotEmpty)
+                .join(' ')
+                .trim();
+            final title = (chat['title'] ?? '') as String;
+            final username = (chat['username'] ?? '') as String;
+            var label = name.isNotEmpty ? name : title;
+            if (label.isEmpty) label = '대화';
+            if (username.isNotEmpty) label = '$label (@$username)';
+            chats[id] = label;
+          }
+        }
+      }
+      if (chats.isEmpty) {
+        _log('대화 내역 없음. 봇에게 /start를 보내고 다시 눌러주세요.');
+        return;
+      }
+      if (!mounted) return;
+      final picked = await showDialog<int>(
+        context: context,
+        builder: (ctx) => SimpleDialog(
+          title: const Text('Chat ID 선택'),
+          children: [
+            for (final e in chats.entries)
+              SimpleDialogOption(
+                onPressed: () => Navigator.pop(ctx, e.key),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Text('${e.value}\n${e.key}',
+                      style: const TextStyle(fontSize: 14)),
+                ),
+              ),
+          ],
+        ),
+      );
+      if (picked != null) {
+        setState(() => _tgChatCtrl.text = '$picked');
+        _collectFromFields();
+        await _save();
+        _log('Chat ID 자동입력: $picked');
+      }
+    } catch (e) {
+      _log('조회 오류: $e');
+    }
+  }
+
   /// 달력 다중선택: 클릭하면 선택, 재클릭하면 해제
   Future<void> _pickDatesMulti() async {
     final tmp = _cfg.dates.toSet();
@@ -1023,6 +1095,15 @@ class _MainScreenState extends State<MainScreen> {
                       label: const Text('텔레그램 테스트')),
                 ),
               ]),
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.tonalIcon(
+                  onPressed: _findTelegramChatId,
+                  icon: const Icon(Icons.person_search_outlined, size: 18),
+                  label: const Text('토큰으로 Chat ID 자동찾기'),
+                ),
+              ),
             ],
           ),
         ),
