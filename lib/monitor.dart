@@ -23,6 +23,7 @@ class MonitorConfig {
   String telegramBotToken;
   String telegramChatId;
   bool telegramEnabled;
+  bool phoneNotifyEnabled;
 
   MonitorConfig({
     this.nolUrl = 'https://nol.yanolja.com/stay/domestic/10070080',
@@ -35,6 +36,7 @@ class MonitorConfig {
     this.telegramBotToken = '',
     this.telegramChatId = '',
     this.telegramEnabled = false,
+    this.phoneNotifyEnabled = true,
   }) : dates = dates ?? [];
 
   Map<String, dynamic> toJson() => {
@@ -48,6 +50,7 @@ class MonitorConfig {
         'telegramBotToken': telegramBotToken,
         'telegramChatId': telegramChatId,
         'telegramEnabled': telegramEnabled,
+        'phoneNotifyEnabled': phoneNotifyEnabled,
       };
 
   static MonitorConfig fromJson(Map<String, dynamic> j) => MonitorConfig(
@@ -63,6 +66,7 @@ class MonitorConfig {
         telegramBotToken: (j['telegramBotToken'] ?? '') as String,
         telegramChatId: (j['telegramChatId'] ?? '') as String,
         telegramEnabled: (j['telegramEnabled'] ?? false) as bool,
+        phoneNotifyEnabled: (j['phoneNotifyEnabled'] ?? true) as bool,
       );
 }
 

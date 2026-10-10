@@ -140,6 +140,8 @@ class _MainScreenState extends State<MainScreen> {
   final _urlCtrl = TextEditingController();
   final _tgTokenCtrl = TextEditingController();
   final _tgChatCtrl = TextEditingController();
+  bool _obscureToken = true;
+  bool _obscureChatId = true;
 
   @override
   void initState() {
@@ -477,26 +479,28 @@ class _MainScreenState extends State<MainScreen> {
     final numStr =
         numbers.isEmpty ? '' : ' (${numbers.take(10).join(', ')})';
     final body = '$date($checkout) $tab $count자리 남음$numStr';
-    // 1) 휴대폰 알림
-    const details = NotificationDetails(
-      android: AndroidNotificationDetails(
-        'nol_found',
-        '예약 알림',
-        channelDescription: '빈자리가 생기면 알림',
-        importance: Importance.max,
-        priority: Priority.high,
-        playSound: true,
-        enableVibration: true,
-      ),
-    );
-    await _notif.show(
-      id: key.hashCode,
-      title: 'NOL 빈자리!',
-      body: body,
-      notificationDetails: details,
-      payload: url,
-    );
-    _log('휴대폰 알림 발송: $key');
+    // 1) 휴대폰 알림 (스위치로 on/off)
+    if (_cfg.phoneNotifyEnabled) {
+      const details = NotificationDetails(
+        android: AndroidNotificationDetails(
+          'nol_found',
+          '예약 알림',
+          channelDescription: '빈자리가 생기면 알림',
+          importance: Importance.max,
+          priority: Priority.high,
+          playSound: true,
+          enableVibration: true,
+        ),
+      );
+      await _notif.show(
+        id: key.hashCode,
+        title: 'NOL 빈자리!',
+        body: body,
+        notificationDetails: details,
+        payload: url,
+      );
+      _log('휴대폰 알림 발송: $key');
+    }
     // 2) 텔레그램 문자
     await _sendTelegram('NOL 빈자리!\n$body\n$url');
   }
@@ -528,6 +532,10 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   Future<void> _testNotif() async {
+    if (!_cfg.phoneNotifyEnabled) {
+      _log('휴대폰 알림이 꺼져 있습니다. 알림 카드에서 켜주세요.');
+      return;
+    }
     const details = NotificationDetails(
       android: AndroidNotificationDetails(
         'nol_found',
@@ -637,7 +645,7 @@ class _MainScreenState extends State<MainScreen> {
         setState(() => _tgChatCtrl.text = '$picked');
         _collectFromFields();
         await _save();
-        _log('Chat ID 자동입력: $picked');
+        _log('Chat ID 자동입력 완료.');
       }
     } catch (e) {
       _log('조회 오류: $e');
@@ -1030,52 +1038,80 @@ class _MainScreenState extends State<MainScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              _sectionTitle('알림', icon: Icons.notifications_outlined),
               Row(
                 children: [
-                  _sectionTitle('알림', icon: Icons.notifications_outlined),
-                  const Spacer(),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.smartphone,
-                          size: 16, color: Colors.grey),
-                      const SizedBox(width: 4),
-                      const Text('휴대폰',
-                          style: TextStyle(
-                              fontSize: 12, fontWeight: FontWeight.w700)),
-                      const SizedBox(width: 8),
-                      const Icon(Icons.send_outlined,
-                          size: 16, color: Colors.grey),
-                      const SizedBox(width: 4),
-                      const Text('텔레그램',
-                          style: TextStyle(
-                              fontSize: 12, fontWeight: FontWeight.w700)),
-                      Switch(
-                        value: _cfg.telegramEnabled,
-                        onChanged: (v) async {
-                          setState(() => _cfg.telegramEnabled = v);
-                          await _save();
-                        },
-                      ),
-                    ],
+                  const Icon(Icons.smartphone,
+                      size: 18, color: Colors.grey),
+                  const SizedBox(width: 8),
+                  const Expanded(
+                    child: Text('휴대폰 알림',
+                        style: TextStyle(
+                            fontSize: 13, fontWeight: FontWeight.w700)),
+                  ),
+                  Switch(
+                    value: _cfg.phoneNotifyEnabled,
+                    onChanged: (v) async {
+                      setState(() => _cfg.phoneNotifyEnabled = v);
+                      await _save();
+                    },
+                  ),
+                ],
+              ),
+              Row(
+                children: [
+                  const Icon(Icons.send_outlined,
+                      size: 18, color: Colors.grey),
+                  const SizedBox(width: 8),
+                  const Expanded(
+                    child: Text('텔레그램 알림',
+                        style: TextStyle(
+                            fontSize: 13, fontWeight: FontWeight.w700)),
+                  ),
+                  Switch(
+                    value: _cfg.telegramEnabled,
+                    onChanged: (v) async {
+                      setState(() => _cfg.telegramEnabled = v);
+                      await _save();
+                    },
                   ),
                 ],
               ),
               TextField(
                 controller: _tgTokenCtrl,
-                decoration: const InputDecoration(
+                obscureText: _obscureToken,
+                enableSuggestions: false,
+                autocorrect: false,
+                decoration: InputDecoration(
                   labelText: 'Bot Token',
                   hintText: 'BotFather에서 발급받은 토큰',
-                  prefixIcon: Icon(Icons.key_outlined, size: 18),
+                  prefixIcon: const Icon(Icons.key_outlined, size: 18),
+                  suffixIcon: IconButton(
+                    icon: Icon(_obscureToken
+                        ? Icons.visibility_outlined
+                        : Icons.visibility_off_outlined),
+                    onPressed: () => setState(
+                        () => _obscureToken = !_obscureToken),
+                  ),
                 ),
               ),
               const SizedBox(height: 8),
               TextField(
                 controller: _tgChatCtrl,
-                decoration: const InputDecoration(
+                obscureText: _obscureChatId,
+                enableSuggestions: false,
+                autocorrect: false,
+                decoration: InputDecoration(
                   labelText: 'Chat ID',
                   hintText: '@userinfobot에서 확인',
-                  prefixIcon: Icon(Icons.person_outline, size: 18),
+                  prefixIcon: const Icon(Icons.person_outline, size: 18),
+                  suffixIcon: IconButton(
+                    icon: Icon(_obscureChatId
+                        ? Icons.visibility_outlined
+                        : Icons.visibility_off_outlined),
+                    onPressed: () => setState(
+                        () => _obscureChatId = !_obscureChatId),
+                  ),
                 ),
                 keyboardType: TextInputType.number,
               ),
