@@ -11,7 +11,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 
 import 'monitor.dart';
 
-// ---------- ?�그?�운???�비??TaskHandler (반복 ????메인???�달) ----------
+// ---------- 포그라운드 서비스 TaskHandler (반복 틱 → 메인에 전달) ----------
 @pragma('vm:entry-point')
 void startCallback() {
   FlutterForegroundTask.setTaskHandler(NolTaskHandler());
@@ -44,7 +44,7 @@ class NolTaskHandler extends TaskHandler {
   void onNotificationDismissed() {}
 }
 
-// ---------- ??----------
+// ---------- 앱 ----------
 void main() {
   FlutterForegroundTask.initCommunicationPort();
   runApp(const NolApp());
@@ -60,7 +60,7 @@ class NolApp extends StatelessWidget {
       brightness: Brightness.light,
     );
     return MaterialApp(
-      title: 'NOL ?�약 감시�?,
+      title: 'NOL 예약 감시기',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: scheme,
@@ -82,7 +82,7 @@ class NolApp extends StatelessWidget {
           margin: EdgeInsets.zero,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(18),
-            side: BorderSide(color: scheme.outlineVariant.withValues(alpha:0.7)),
+            side: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.7)),
           ),
           color: Colors.white,
         ),
@@ -196,8 +196,8 @@ class _MainScreenState extends State<MainScreen> {
     );
     const channel = AndroidNotificationChannel(
       'nol_found',
-      '?�약 ?�림',
-      description: '?�하???�이?��? ?�리�??�림',
+      '예약 알림',
+      description: '원하는 사이트가 열리면 알림',
       importance: Importance.max,
     );
     await _notif
@@ -209,7 +209,7 @@ class _MainScreenState extends State<MainScreen> {
       ..setBackgroundColor(Colors.white)
       ..loadRequest(Uri.parse(_cfg.nolUrl));
     setState(() {});
-    _log('준�??�료. 로그?�하?�면 브라?��? ??��??NOL??로그?�하?�요.');
+    _log('준비 완료. 로그인하려면 브라우저 탭에서 NOL에 로그인하세요.');
 
     _timer = Timer.periodic(const Duration(seconds: 15), (_) => _maybeCheck());
   }
@@ -233,8 +233,8 @@ class _MainScreenState extends State<MainScreen> {
     FlutterForegroundTask.init(
       androidNotificationOptions: AndroidNotificationOptions(
         channelId: 'nol_watch',
-        channelName: 'NOL 감시 �?,
-        channelDescription: '?�약 감시가 ?�행 중입?�다.',
+        channelName: 'NOL 감시 중',
+        channelDescription: '예약 감시가 실행 중입니다.',
         onlyAlertOnce: true,
       ),
       iosNotificationOptions: const IOSNotificationOptions(
@@ -263,11 +263,11 @@ class _MainScreenState extends State<MainScreen> {
     _cfg.telegramChatId = _tgChatCtrl.text.trim();
   }
 
-  // ---------- 감시 ?�어 ----------
+  // ---------- 감시 제어 ----------
   Future<void> _startMonitor() async {
     _collectFromFields();
     if (_cfg.dates.isEmpty) {
-      _log('?�짜�?1�??�상 ?�택?�세??');
+      _log('날짜를 1개 이상 선택하세요.');
       return;
     }
     await _ensureService();
@@ -278,22 +278,22 @@ class _MainScreenState extends State<MainScreen> {
       } else {
         await FlutterForegroundTask.startService(
           serviceId: 256,
-          notificationTitle: 'NOL 감시 �?,
-          notificationText: '?�하???�리가 ?�면 ?�려?�립?�다.',
+          notificationTitle: 'NOL 감시 중',
+          notificationText: '원하는 자리가 나면 알려드립니다.',
           serviceTypes: [ForegroundServiceTypes.dataSync],
           callback: startCallback,
         );
       }
       _serviceOn = true;
     } catch (e) {
-      _log('?�그?�운???�비???�작 ?�패(감시?????�행 중에�??�작): $e');
+      _log('포그라운드 서비스 시작 실패(감시는 앱 실행 중에만 동작): $e');
     }
     setState(() {
       _monitoring = true;
       _failStreak = 0;
       _blockedUntil = null;
     });
-    _log('감시 ?�작 (?�짜 ${_cfg.dates.length}�?× 4개존, ${_cfg.intervalSec}�?간격)');
+    _log('감시 시작 (날짜 ${_cfg.dates.length}개 × 4개존, ${_cfg.intervalSec}초 간격)');
     _maybeCheck();
   }
 
@@ -305,7 +305,7 @@ class _MainScreenState extends State<MainScreen> {
       }
     } catch (_) {}
     _serviceOn = false;
-    _log('감시 중�?');
+    _log('감시 중지');
   }
 
   void _onTaskData(Object data) {
@@ -355,20 +355,21 @@ class _MainScreenState extends State<MainScreen> {
         try {
           checkout = DateTime.parse(date).add(Duration(days: _cfg.nights));
         } catch (_) {
-          _log('?�못???�짜 건너?�: $date');
+          _log('잘못된 날짜 건너뜀: $date');
           continue;
         }
         final co =
             '${checkout.year.toString().padLeft(4, '0')}-${checkout.month.toString().padLeft(2, '0')}-${checkout.day.toString().padLeft(2, '0')}';
         final url = buildUrl(_cfg.nolUrl, date, co, _cfg.adult, _cfg.child);
-        _log('$date ?�인 (??$co)');
+        _log('$date 확인 (→ $co)');
         try {
           await _web!.loadRequest(Uri.parse(url));
         } catch (e) {
-          _log('  ?�이지 ?�동 ?�패: $e');
+          _log('  페이지 이동 실패: $e');
           continue;
         }
-        // 본문 로딩 ?��?        var body = '';
+        // 본문 로딩 대기
+        var body = '';
         for (var i = 0; i < 25; i++) {
           await Future.delayed(const Duration(seconds: 1));
           body = await _jsStr(jsReadText);
@@ -377,16 +378,16 @@ class _MainScreenState extends State<MainScreen> {
         final hasLogin = (await _jsStr(jsHasLogin)).toLowerCase() == 'true';
         final blocked = classifyPage(body, hasLogin);
         if (blocked == 'blocked-login') {
-          _log('  로그?�이 ?�요?�니?? 브라?��? ??��??로그?�하?�요.');
+          _log('  로그인이 필요합니다. 브라우저 탭에서 로그인하세요.');
           allFail = false;
           continue;
         }
         if (blocked == 'load-fail' || body.length < 500) {
-          _log('  불러?�기 ?�패(IP ?�시차단 가??. ?�음 기회???�시??');
+          _log('  불러오기 실패(IP 일시차단 가능). 다음 기회에 재시도.');
           continue;
         }
         allFail = false;
-        // 4�?�????�회 ????�� ?�여 ?�리 ??집계
+        // 4개 존 탭 순회 → 탭별 잔여 자리 수 집계
         List<String> tabs = [];
         try {
           final raw = await _jsStr(jsZoneTabs);
@@ -414,15 +415,15 @@ class _MainScreenState extends State<MainScreen> {
           if (tab != null) {
             tabAvail[tab] = c;
           } else {
-            tabAvail['?�체'] = c;
+            tabAvail['전체'] = c;
           }
         }
         if (tabAvail.isNotEmpty) {
           final cov = tabAvail.entries
-              .map((e) => '${e.key} ${e.value.available}?�리'
-                  '${e.value.numbers.isNotEmpty ? '(${e.value.numbers.take(8).join(',')}${e.value.numbers.length > 8 ? '?? : ''})' : ''}')
+              .map((e) => '${e.key} ${e.value.available}자리'
+                  '${e.value.numbers.isNotEmpty ? '(${e.value.numbers.take(8).join(',')}${e.value.numbers.length > 8 ? '…' : ''})' : ''}')
               .join(' / ');
-          _log('  ?�여: $cov');
+          _log('  잔여: $cov');
         }
         var anyAvail = false;
         for (final entry in tabAvail.entries) {
@@ -430,15 +431,15 @@ class _MainScreenState extends State<MainScreen> {
           final c = entry.value;
           if (c.available > 0) {
             anyAvail = true;
-            _log('  ??$date $tab ${c.available}?�리 ?�음!');
+            _log('  ★ $date $tab ${c.available}자리 남음!');
             await _notifyAvailable(date, co, tab, c.available, c.numbers, url);
           }
         }
         if (!anyAvail) {
           if (tabAvail.isEmpty) {
-            _log('  ?�약 ?�보�??�인?????�습?�다.');
+            _log('  예약 정보를 확인할 수 없습니다.');
           } else {
-            _log('  $date 빈자�??�음');
+            _log('  $date 빈자리 없음');
           }
         }
       }
@@ -447,7 +448,7 @@ class _MainScreenState extends State<MainScreen> {
         final wait = _cfg.intervalSec * (1 << (_failStreak > 3 ? 3 : _failStreak));
         final capped = wait > 300 ? 300 : wait;
         _blockedUntil = DateTime.now().add(Duration(seconds: capped));
-        _log('?�속 ?�패 $_failStreak????$capped�??�식(IP 보호).');
+        _log('연속 실패 $_failStreak회 — $capped초 휴식(IP 보호).');
       } else {
         _failStreak = 0;
       }
@@ -457,7 +458,7 @@ class _MainScreenState extends State<MainScreen> {
           final stamp =
               '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}:${t.second.toString().padLeft(2, '0')}';
           await FlutterForegroundTask.updateService(
-            notificationText: '마�?�??�인 $stamp',
+            notificationText: '마지막 확인 $stamp',
           );
         } catch (_) {}
       }
@@ -475,13 +476,13 @@ class _MainScreenState extends State<MainScreen> {
     await _save();
     final numStr =
         numbers.isEmpty ? '' : ' (${numbers.take(10).join(', ')})';
-    final body = '$date($checkout) $tab $count?�리 ?�음$numStr';
-    // 1) ?��????�림
+    final body = '$date($checkout) $tab $count자리 남음$numStr';
+    // 1) 휴대폰 알림
     const details = NotificationDetails(
       android: AndroidNotificationDetails(
         'nol_found',
-        '?�약 ?�림',
-        channelDescription: '빈자리�? ?�기�??�림',
+        '예약 알림',
+        channelDescription: '빈자리가 생기면 알림',
         importance: Importance.max,
         priority: Priority.high,
         playSound: true,
@@ -490,14 +491,14 @@ class _MainScreenState extends State<MainScreen> {
     );
     await _notif.show(
       id: key.hashCode,
-      title: 'NOL 빈자�?',
+      title: 'NOL 빈자리!',
       body: body,
       notificationDetails: details,
       payload: url,
     );
-    _log('?��????�림 발송: $key');
-    // 2) ?�레그램 문자
-    await _sendTelegram('NOL 빈자�?\n$body\n$url');
+    _log('휴대폰 알림 발송: $key');
+    // 2) 텔레그램 문자
+    await _sendTelegram('NOL 빈자리!\n$body\n$url');
   }
 
   Future<void> _sendTelegram(String text) async {
@@ -505,7 +506,7 @@ class _MainScreenState extends State<MainScreen> {
     final token = _cfg.telegramBotToken.trim();
     final chat = _cfg.telegramChatId.trim();
     if (token.isEmpty || chat.isEmpty) {
-      _log('?�레그램 미설???�큰/ChatID ?�력 ?�요).');
+      _log('텔레그램 미설정(토큰/ChatID 입력 필요).');
       return;
     }
     try {
@@ -514,12 +515,15 @@ class _MainScreenState extends State<MainScreen> {
           .post(uri, body: {'chat_id': chat, 'text': text}).timeout(
               const Duration(seconds: 15));
       if (resp.statusCode == 200) {
-        _log('?�레그램 ?�송 ?�료.');
+        _log('텔레그램 전송 완료.');
       } else {
-        _log('?�레그램 ?�패 (${resp.statusCode}): ${resp.body.substring(0, resp.body.length > 120 ? 120 : resp.body.length)}');
+        final snippet = resp.body.length > 120
+            ? resp.body.substring(0, 120)
+            : resp.body;
+        _log('텔레그램 실패 (${resp.statusCode}): $snippet');
       }
     } catch (e) {
-      _log('?�레그램 ?�류: $e');
+      _log('텔레그램 오류: $e');
     }
   }
 
@@ -527,30 +531,30 @@ class _MainScreenState extends State<MainScreen> {
     const details = NotificationDetails(
       android: AndroidNotificationDetails(
         'nol_found',
-        '?�약 ?�림',
+        '예약 알림',
         importance: Importance.max,
         priority: Priority.high,
       ),
     );
     await _notif.show(
         id: 999,
-        title: '?�스???�림',
-        body: '?�림???�면 ?�정 ?�료?�니??',
+        title: '테스트 알림',
+        body: '알림이 오면 설정 완료입니다.',
         notificationDetails: details);
-    _log('?�스???�림 발송.');
+    _log('테스트 알림 발송.');
   }
 
   Future<void> _testTelegram() async {
     _collectFromFields();
     await _save();
-    await _sendTelegramForced('NOL 감시�??�스??메시지?�니?? ?�신?�면 ?�정 ?�료!');
+    await _sendTelegramForced('NOL 감시기 테스트 메시지입니다. 수신되면 설정 완료!');
   }
 
   Future<void> _sendTelegramForced(String text) async {
     final token = _tgTokenCtrl.text.trim();
     final chat = _tgChatCtrl.text.trim();
     if (token.isEmpty || chat.isEmpty) {
-      _log('?�레그램 ?�큰/Chat ID�??�력?�세??');
+      _log('텔레그램 토큰/Chat ID를 입력하세요.');
       return;
     }
     try {
@@ -559,16 +563,16 @@ class _MainScreenState extends State<MainScreen> {
           .post(uri, body: {'chat_id': chat, 'text': text}).timeout(
               const Duration(seconds: 15));
       if (resp.statusCode == 200) {
-        _log('?�레그램 ?�스???�송 ?�료.');
+        _log('텔레그램 테스트 전송 완료.');
       } else {
-        _log('?�레그램 ?�스???�패 (${resp.statusCode})');
+        _log('텔레그램 테스트 실패 (${resp.statusCode})');
       }
     } catch (e) {
-      _log('?�레그램 ?�스???�류: $e');
+      _log('텔레그램 테스트 오류: $e');
     }
   }
 
-  /// ?�력 ?�중?�택: ?�릭?�면 ?�택, ?�클�?���??�제
+  /// 달력 다중선택: 클릭하면 선택, 재클릭하면 해제
   Future<void> _pickDatesMulti() async {
     final tmp = _cfg.dates.toSet();
     await showDialog(
@@ -591,7 +595,7 @@ class _MainScreenState extends State<MainScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
       decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest.withValues(alpha:0.45),
+        color: cs.surfaceContainerHighest.withValues(alpha: 0.45),
         borderRadius: BorderRadius.circular(14),
       ),
       child: Row(
@@ -686,7 +690,7 @@ class _MainScreenState extends State<MainScreen> {
                   color: Colors.white, size: 20),
             ),
             const SizedBox(width: 10),
-            const Text('NOL 빈자�?감시'),
+            const Text('NOL 빈자리 감시'),
           ],
         ),
         actions: [
@@ -696,8 +700,8 @@ class _MainScreenState extends State<MainScreen> {
                 const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
             decoration: BoxDecoration(
               color: _monitoring
-                  ? Colors.green.withValues(alpha:0.12)
-                  : Colors.grey.withValues(alpha:0.15),
+                  ? Colors.green.withValues(alpha: 0.12)
+                  : Colors.grey.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(20),
               border: Border.all(
                 color: _monitoring ? Colors.green : Colors.grey.shade300,
@@ -716,7 +720,7 @@ class _MainScreenState extends State<MainScreen> {
                 ),
                 const SizedBox(width: 6),
                 Text(
-                  _monitoring ? '감시 �? : '?��?�?,
+                  _monitoring ? '감시 중' : '대기 중',
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
@@ -745,11 +749,11 @@ class _MainScreenState extends State<MainScreen> {
           NavigationDestination(
               icon: Icon(Icons.tune_outlined),
               selectedIcon: Icon(Icons.tune),
-              label: '감시 ?�정'),
+              label: '감시 설정'),
           NavigationDestination(
               icon: Icon(Icons.web_outlined),
               selectedIcon: Icon(Icons.web),
-              label: '브라?��?'),
+              label: '브라우저'),
           NavigationDestination(
               icon: Icon(Icons.receipt_long_outlined),
               selectedIcon: Icon(Icons.receipt_long),
@@ -765,7 +769,7 @@ class _MainScreenState extends State<MainScreen> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(14, 10, 14, 18),
       children: [
-        // ?�태 ?�약 카드
+        // 상태 요약 카드
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
@@ -785,7 +789,7 @@ class _MainScreenState extends State<MainScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      _monitoring ? '감시가 ?�행 중입?�다' : '감시가 꺼져 ?�습?�다',
+                      _monitoring ? '감시가 실행 중입니다' : '감시가 꺼져 있습니다',
                       style: const TextStyle(
                           color: Colors.white,
                           fontSize: 16,
@@ -793,9 +797,9 @@ class _MainScreenState extends State<MainScreen> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      '?�짜 ${dates.length}??· 4�?�?· ${_cfg.intervalSec}�?간격',
+                      '날짜 ${dates.length}일 · 4개 존 · ${_cfg.intervalSec}초 간격',
                       style: TextStyle(
-                          color: Colors.white.withValues(alpha:0.85),
+                          color: Colors.white.withValues(alpha: 0.85),
                           fontSize: 12.5),
                     ),
                   ],
@@ -811,7 +815,7 @@ class _MainScreenState extends State<MainScreen> {
                       borderRadius: BorderRadius.circular(12)),
                 ),
                 onPressed: _monitoring ? _stopMonitor : _startMonitor,
-                child: Text(_monitoring ? '중�?' : '?�작',
+                child: Text(_monitoring ? '중지' : '시작',
                     style: const TextStyle(fontWeight: FontWeight.w800)),
               ),
             ],
@@ -822,16 +826,16 @@ class _MainScreenState extends State<MainScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _sectionTitle('?�약 ?�짜', sub: '?�력?�서 ?�러 ???�택', icon: Icons.calendar_month_outlined),
+              _sectionTitle('예약 날짜', sub: '달력에서 여러 날 선택', icon: Icons.calendar_month_outlined),
               if (dates.isEmpty)
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   decoration: BoxDecoration(
-                    color: cs.surfaceContainerHighest.withValues(alpha:0.4),
+                    color: cs.surfaceContainerHighest.withValues(alpha: 0.4),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const Text('?�택???�짜가 ?�습?�다',
+                  child: const Text('선택된 날짜가 없습니다',
                       textAlign: TextAlign.center,
                       style: TextStyle(color: Colors.grey, fontSize: 13)),
                 )
@@ -865,8 +869,8 @@ class _MainScreenState extends State<MainScreen> {
                       onPressed: _pickDatesMulti,
                       icon: const Icon(Icons.calendar_month, size: 18),
                       label: Text(dates.isEmpty
-                          ? '?�력?�서 ?�짜 ?�택'
-                          : '?�택/?�제 (${dates.length}??'),
+                          ? '달력에서 날짜 선택'
+                          : '선택/해제 (${dates.length}일)'),
                     ),
                   ),
                   if (dates.isNotEmpty) ...[
@@ -877,12 +881,12 @@ class _MainScreenState extends State<MainScreen> {
                         _notified.clear();
                         await _save();
                       },
-                      child: const Text('?�체지?�기'),
+                      child: const Text('전체지우기'),
                     ),
                   ],
                 ],
               ),
-              const Text('?�르�??�택, ?�시 ?�르�??�제?�니??',
+              const Text('누르면 선택, 다시 누르면 해제됩니다.',
                   style: TextStyle(fontSize: 12, color: Colors.grey)),
             ],
           ),
@@ -892,20 +896,20 @@ class _MainScreenState extends State<MainScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _sectionTitle('?�박 조건', icon: Icons.bed_outlined),
+              _sectionTitle('숙박 조건', icon: Icons.bed_outlined),
               Wrap(
                 spacing: 10,
                 runSpacing: 10,
                 children: [
-                  _stepper('?�박(�?', _cfg.nights, (v) async {
+                  _stepper('숙박(박)', _cfg.nights, (v) async {
                     setState(() => _cfg.nights = v);
                     await _save();
                   }, min: 1, max: 30),
-                  _stepper('?�인', _cfg.adult, (v) async {
+                  _stepper('성인', _cfg.adult, (v) async {
                     setState(() => _cfg.adult = v);
                     await _save();
                   }, min: 1),
-                  _stepper('?�동', _cfg.child, (v) async {
+                  _stepper('아동', _cfg.child, (v) async {
                     setState(() => _cfg.child = v);
                     await _save();
                   }),
@@ -914,7 +918,7 @@ class _MainScreenState extends State<MainScreen> {
               const SizedBox(height: 12),
               Row(
                 children: [
-                  const Text('?�인 주기',
+                  const Text('확인 주기',
                       style:
                           TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
                   const SizedBox(width: 10),
@@ -931,7 +935,7 @@ class _MainScreenState extends State<MainScreen> {
                         value: _cfg.intervalSec,
                         items: const [60, 120, 180, 300]
                             .map((s) => DropdownMenuItem(
-                                value: s, child: Text('$s�?)))
+                                value: s, child: Text('$s초')))
                             .toList(),
                         onChanged: (v) async {
                           if (v == null) return;
@@ -944,7 +948,7 @@ class _MainScreenState extends State<MainScreen> {
                 ],
               ),
               const SizedBox(height: 4),
-              const Text('짧을?�록 IP 차단 ?�험???�니?? 120�?권장.',
+              const Text('짧을수록 IP 차단 위험이 큽니다. 120초 권장.',
                   style: TextStyle(fontSize: 12, color: Colors.grey)),
             ],
           ),
@@ -956,7 +960,7 @@ class _MainScreenState extends State<MainScreen> {
             children: [
               Row(
                 children: [
-                  _sectionTitle('?�림', icon: Icons.notifications_outlined),
+                  _sectionTitle('알림', icon: Icons.notifications_outlined),
                   const Spacer(),
                   Row(
                     mainAxisSize: MainAxisSize.min,
@@ -964,14 +968,14 @@ class _MainScreenState extends State<MainScreen> {
                       const Icon(Icons.smartphone,
                           size: 16, color: Colors.grey),
                       const SizedBox(width: 4),
-                      const Text('?��???,
+                      const Text('휴대폰',
                           style: TextStyle(
                               fontSize: 12, fontWeight: FontWeight.w700)),
                       const SizedBox(width: 8),
                       const Icon(Icons.send_outlined,
                           size: 16, color: Colors.grey),
                       const SizedBox(width: 4),
-                      const Text('?�레그램',
+                      const Text('텔레그램',
                           style: TextStyle(
                               fontSize: 12, fontWeight: FontWeight.w700)),
                       Switch(
@@ -989,7 +993,7 @@ class _MainScreenState extends State<MainScreen> {
                 controller: _tgTokenCtrl,
                 decoration: const InputDecoration(
                   labelText: 'Bot Token',
-                  hintText: 'BotFather?�서 발급받�? ?�큰',
+                  hintText: 'BotFather에서 발급받은 토큰',
                   prefixIcon: Icon(Icons.key_outlined, size: 18),
                 ),
               ),
@@ -998,7 +1002,7 @@ class _MainScreenState extends State<MainScreen> {
                 controller: _tgChatCtrl,
                 decoration: const InputDecoration(
                   labelText: 'Chat ID',
-                  hintText: '@userinfobot?�서 ?�인',
+                  hintText: '@userinfobot에서 확인',
                   prefixIcon: Icon(Icons.person_outline, size: 18),
                 ),
                 keyboardType: TextInputType.number,
@@ -1009,14 +1013,14 @@ class _MainScreenState extends State<MainScreen> {
                   child: OutlinedButton.icon(
                       onPressed: _testNotif,
                       icon: const Icon(Icons.smartphone, size: 16),
-                      label: const Text('?��????�스??)),
+                      label: const Text('휴대폰 테스트')),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: OutlinedButton.icon(
                       onPressed: _testTelegram,
                       icon: const Icon(Icons.send_outlined, size: 16),
-                      label: const Text('?�레그램 ?�스??)),
+                      label: const Text('텔레그램 테스트')),
                 ),
               ]),
             ],
@@ -1027,7 +1031,7 @@ class _MainScreenState extends State<MainScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _sectionTitle('?�약 ?�이지', icon: Icons.link_outlined),
+              _sectionTitle('예약 페이지', icon: Icons.link_outlined),
               TextField(
                   controller: _urlCtrl,
                   decoration: const InputDecoration(
@@ -1042,11 +1046,11 @@ class _MainScreenState extends State<MainScreen> {
               onPressed: () async {
                 _collectFromFields();
                 await _save();
-                _log('?�정 ?�???�료.');
+                _log('설정 저장 완료.');
                 setState(() {});
               },
               icon: const Icon(Icons.save_outlined, size: 18),
-              label: const Text('?�정 ?�??),
+              label: const Text('설정 저장'),
             ),
           ),
           const SizedBox(width: 8),
@@ -1055,10 +1059,10 @@ class _MainScreenState extends State<MainScreen> {
               onPressed: () async {
                 _notified.clear();
                 await _save();
-                _log('?�림 기록 초기??(?�음 빈자리�????�시 ?�림).');
+                _log('알림 기록 초기화 (다음 빈자리부터 다시 알림).');
               },
               icon: const Icon(Icons.refresh, size: 18),
-              label: const Text('?�림 초기??),
+              label: const Text('알림 초기화'),
             ),
           ),
         ]),
@@ -1075,14 +1079,14 @@ class _MainScreenState extends State<MainScreen> {
                   borderRadius: BorderRadius.circular(14)),
             ),
             onPressed: _monitoring ? _stopMonitor : _startMonitor,
-            child: Text(_monitoring ? '감시 중�?' : '감시 ?�작',
+            child: Text(_monitoring ? '감시 중지' : '감시 시작',
                 style: const TextStyle(
                     fontSize: 17, fontWeight: FontWeight.w800)),
           ),
         ),
         const SizedBox(height: 8),
         Text(
-          '?�토 A/B, 캐라�?2??4??4�?존의 ?�여 ?�리 ?��? ?�짜별로 ?�인?�니??',
+          '오토 A/B, 캐라반 2인/4인 4개 존의 잔여 자리 수를 날짜별로 확인합니다.',
           textAlign: TextAlign.center,
           style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
         ),
@@ -1106,7 +1110,7 @@ class _MainScreenState extends State<MainScreen> {
               child: FilledButton.tonalIcon(
                 onPressed: () => _openUrl(_cfg.nolUrl),
                 icon: const Icon(Icons.login, size: 18),
-                label: const Text('NOL ?�기 · 로그???��???,
+                label: const Text('NOL 열기 · 로그인 유지용',
                     style: TextStyle(fontWeight: FontWeight.w700)),
               ),
             ),
@@ -1146,10 +1150,10 @@ class _MainScreenState extends State<MainScreen> {
                   Icon(Icons.receipt_long_outlined,
                       size: 44, color: Colors.grey.shade400),
                   const SizedBox(height: 8),
-                  const Text('?�직 기록???�습?�다',
+                  const Text('아직 기록이 없습니다',
                       style: TextStyle(fontWeight: FontWeight.w700)),
                   const SizedBox(height: 4),
-                  Text('감시�??�작?�면 ?�인 결과가 ?�입?�다',
+                  Text('감시를 시작하면 확인 결과가 쌓입니다',
                       style: TextStyle(
                           fontSize: 12, color: Colors.grey.shade600)),
                 ],
@@ -1163,9 +1167,9 @@ class _MainScreenState extends State<MainScreen> {
               itemCount: _logs.length,
               separatorBuilder: (_, _) => const SizedBox(height: 6),
               itemBuilder: (_, i) {
-                final log = _logs[_logs.length - 1 - i]; // 최신???�로
-                final isHit = log.contains('??);
-                final isErr = log.contains('?�패') || log.contains('차단');
+                final log = _logs[_logs.length - 1 - i]; // 최신이 위로
+                final isHit = log.contains('★');
+                final isErr = log.contains('실패') || log.contains('차단');
                 return Container(
                   padding: const EdgeInsets.symmetric(
                       horizontal: 12, vertical: 9),
@@ -1183,7 +1187,7 @@ class _MainScreenState extends State<MainScreen> {
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(isHit ? '?��' : (isErr ? '?�️' : '·'),
+                      Text(isHit ? '🎉' : (isErr ? '⚠️' : '·'),
                           style: const TextStyle(fontSize: 13)),
                       const SizedBox(width: 8),
                       Expanded(
@@ -1208,7 +1212,7 @@ class _MainScreenState extends State<MainScreen> {
             child: OutlinedButton.icon(
               onPressed: () => setState(_logs.clear),
               icon: const Icon(Icons.delete_outline, size: 18),
-              label: const Text('기록 지?�기'),
+              label: const Text('기록 지우기'),
             ),
           ),
         ),
@@ -1217,7 +1221,7 @@ class _MainScreenState extends State<MainScreen> {
   }
 }
 
-/// ?�력 ?�중?�택 ?�이?�로�? ?�짜 ?�릭=?�택, ?�클�??�제
+/// 달력 다중선택 다이얼로그: 날짜 클릭=선택, 재클릭=해제
 class _MultiCalendarDialog extends StatefulWidget {
   final Set<String> initial;
   final void Function(Set<String>) onDone;
@@ -1246,10 +1250,10 @@ class _MultiCalendarDialogState extends State<_MultiCalendarDialog> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final first = DateTime(month.year, month.month, 1);
-    final startOffset = first.weekday % 7; // ??0
+    final startOffset = first.weekday % 7; // 일=0
     final daysInMonth = DateTime(month.year, month.month + 1, 0).day;
     final todayStr = fmt(DateTime.now());
-    const week = ['??, '??, '??, '??, '�?, '�?, '??];
+    const week = ['일', '월', '화', '수', '목', '금', '토'];
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
       child: Padding(
@@ -1274,7 +1278,7 @@ class _MultiCalendarDialogState extends State<_MultiCalendarDialog> {
                       color: cs.primaryContainer,
                       borderRadius: BorderRadius.circular(20),
                     ),
-                    child: Text('${sel.length}???�택',
+                    child: Text('${sel.length}일 선택',
                         style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w700,
@@ -1291,7 +1295,7 @@ class _MultiCalendarDialogState extends State<_MultiCalendarDialog> {
                     onPressed: () => setState(() =>
                         month = DateTime(month.year, month.month - 1)),
                   ),
-                  const Text('?�르�??�택, ?�시 ?�르�??�제',
+                  const Text('누르면 선택, 다시 누르면 해제',
                       style: TextStyle(fontSize: 12, color: Colors.grey)),
                   IconButton(
                     icon: const Icon(Icons.chevron_right),
@@ -1392,7 +1396,7 @@ class _MultiCalendarDialogState extends State<_MultiCalendarDialog> {
                         widget.onDone(sel);
                         Navigator.pop(context);
                       },
-                      child: const Text('?�인',
+                      child: const Text('확인',
                           style: TextStyle(fontWeight: FontWeight.w800)),
                     ),
                   ),
