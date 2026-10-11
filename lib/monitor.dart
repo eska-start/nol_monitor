@@ -9,8 +9,61 @@ const List<String> zoneTabs = [
   '캐라반(4인)존',
 ];
 
-const List<String> negWords = ['예약마감', '마감', '매진', '품절', '완판', 'soldout'];
-const List<String> posStrong = ['예약가능', '예약하기', '선택가능', '선택하기', '남은객실', '잔여'];
+const List<String> negWords = [
+  '예약마감',
+  '마감',
+  '매진',
+  '품절',
+  '완판',
+  'soldout',
+  '예약불가',
+  '예약불가능',
+  '불가',
+  '불가능',
+  '없음',
+  '없습니다',
+  '마감됨',
+  '판매완료',
+  '준비중',
+  '대기중',
+  '입실불가',
+];
+
+/// 강한 긍정: 공통 버튼 문구(예약하기/선택하기)는 제외.
+/// '예약가능'만 강한 긍정으로 인정. '남은객실/잔여'는 수량>0 정규식으로 별도 판정.
+const List<String> posStrong = ['예약가능'];
+
+/// 잔여/남은객실 뒤 숫자>0 이면 진짜 잔여. 공백 제거된 seg 기준이라 \s*로 대응.
+bool _hasPositiveQty(String seg) {
+  final qty =
+      RegExp(r'(잔여|남은객실|잔여객실|잔여수|남은객실수)\s*[:：]?\s*(\d+)\s*(개|객실|팀)?');
+  for (final m in qty.allMatches(seg)) {
+    final n = int.tryParse(m.group(2) ?? '0') ?? 0;
+    if (n > 0) return true;
+  }
+  return false;
+}
+
+bool _hasZeroQty(String seg) {
+  if (RegExp(r'(잔여|남은객실|잔여객실)\s*[:：]?\s*0\s*(개|객실|팀)?')
+      .hasMatch(seg)) {
+    return true;
+  }
+  return false;
+}
+
+/// 구간 점수. 약판정('가능' 포함) 제거 — 오알림 주범이므로 사용 안 함.
+(int, int) _scoreSegment(String seg) {
+  var pos = 0, neg = 0;
+  if (negWords.any(seg.contains) || seg.contains('예약불가')) neg++;
+  if (_hasZeroQty(seg)) neg++;
+  if (posStrong.any(seg.contains)) pos += 2;
+  if (_hasPositiveQty(seg)) pos += 2;
+  return (pos, neg);
+}
+
+/// 방 구간 윈도우: 600자는 푸터 공통버튼까지 끌어오므로 200자로 축소.
+const int _segWindow = 200;
 
 class MonitorConfig {
   String nolUrl;
@@ -167,18 +220,16 @@ RoomVerdict extractRooms(String bodyText, List<int> wanted) {
     for (var i = 0; i < dedup.length; i++) {
       final (s, e, num) = dedup[i];
       if (num != site) continue;
-      final segEnd = (i + 1 < dedup.length) ? dedup[i + 1].$1 : e + 600;
-      final end = segEnd < e + 600 ? segEnd : e + 600;
-      final seg = text.substring(s, end > text.length ? text.length : end).replaceAll(' ', '').toLowerCase();
-      final weak = seg.replaceAll('주차가능', '');
-      if (negWords.any(seg.contains) || seg.contains('예약불가')) {
-        neg++;
-      }
-      if (posStrong.any(seg.contains)) {
-        pos += 2;
-      } else if (weak.contains('가능') && !weak.contains('불가능')) {
-        pos++;
-      }
+      final segEnd =
+          (i + 1 < dedup.length) ? dedup[i + 1].$1 : e + _segWindow;
+      final end = segEnd < e + _segWindow ? segEnd : e + _segWindow;
+      final seg = text
+          .substring(s, end > text.length ? text.length : end)
+          .replaceAll(' ', '')
+          .toLowerCase();
+      final (p, n) = _scoreSegment(seg);
+      pos += p;
+      neg += n;
     }
     if (neg > 0 && pos == 0) {
       rooms[site] = false;
@@ -215,24 +266,22 @@ RoomVerdict extractRooms(String bodyText, List<int> wanted) {
   final byNum = <int, List<(int, int)>>{};
   for (var i = 0; i < dedup.length; i++) {
     final (s, e, num) = dedup[i];
-    final segEnd = (i + 1 < dedup.length) ? dedup[i + 1].$1 : e + 600;
-    final end = segEnd < e + 600 ? segEnd : e + 600;
+    final segEnd =
+        (i + 1 < dedup.length) ? dedup[i + 1].$1 : e + _segWindow;
+    final end = segEnd < e + _segWindow ? segEnd : e + _segWindow;
     byNum.putIfAbsent(num, () => []).add((s, end > text.length ? text.length : end));
   }
   final availNums = <int>[];
   for (final entry in byNum.entries) {
     var pos = 0, neg = 0;
     for (final (s, e) in entry.value) {
-      final seg = text.substring(s, e).replaceAll(' ', '').toLowerCase();
-      final weak = seg.replaceAll('주차가능', '');
-      if (negWords.any(seg.contains) || seg.contains('예약불가')) {
-        neg++;
-      }
-      if (posStrong.any(seg.contains)) {
-        pos += 2;
-      } else if (weak.contains('가능') && !weak.contains('불가능')) {
-        pos++;
-      }
+      final seg = text
+          .substring(s, e)
+          .replaceAll(' ', '')
+          .toLowerCase();
+      final (p, n) = _scoreSegment(seg);
+      pos += p;
+      neg += n;
     }
     if (pos > 0 && neg == 0) availNums.add(entry.key);
   }
